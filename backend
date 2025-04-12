@@ -1,0 +1,238 @@
+pip install Flask Flask-SocketIO
+import os
+import sys
+import json
+from datetime import datetime
+import random
+from collections import defaultdict, deque # Gardez les imports nécessaires pour Game/AI
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import joblib
+
+from flask import Flask, render_template, request # Nouveaux imports Flask
+from flask_socketio import SocketIO, emit # Nouveaux imports SocketIO
+
+# --- Vos classes AI (BasicAI, QLearningAI, DQN, HybridAI) vont ici ---
+# (Assurez-vous qu'elles n'ont plus de dépendances Pygame)
+# ... (Collez vos classes AI ici) ...
+
+# --- Votre classe Game modifiée ---
+class Game:
+    def __init__(self):
+        print("Initializing Game Logic...")
+        self.zones = ["A", "B", "C", "D", "E"]
+        self.actions = ["Collecter", "Attaquer", "Défendre"]
+        # Simplifié : pas d'items pour l'instant dans cette version web
+        self.items = {}
+        self.ai_models_dir = 'ai_models'
+        self.highscores_file = 'highscores.json'
+        self.joblib_file = "game_export.joblib"
+
+        self.highscores = self._load_scores()
+        # Le chargement/sauvegarde des IA peut rester ici
+        self._load_ai_models()
+        self.reset_game()
+        print("Game Logic Initialized.")
+
+    # ... (Gardez _load_scores, _save_score, export_joblib, import_joblib) ...
+    # ... (Gardez _load_ai_models, _save_ai_models, _ensure_dir_exists) ...
+    # ... (Gardez resolve_turn) ...
+
+    def reset_game(self):
+        print("Resetting game state...")
+        self.current_turn = 1
+        self.player_score = 0
+        self.ai_score = 0
+        self.history = []
+        self.ai_history = deque(maxlen=10)
+        self.ai_level = 1
+        self.last_ai_move = None
+        self.game_over = False
+        self.winner = None # Qui a gagné
+        # Pas besoin de 'mode', 'selected_zone', 'selected_action' ici, géré par le frontend/état serveur
+        print("Game reset.")
+
+    def set_level(self, level):
+        if level in self.ai_models:
+            self.ai_level = level
+            print(f"AI Level set to: {self.ai_level}")
+            return True
+        return False
+
+    def get_game_state(self):
+        """Retourne l'état actuel du jeu pour l'envoyer au frontend"""
+        return {
+            'turn': self.current_turn,
+            'player_score': self.player_score,
+            'ai_score': self.ai_score,
+            'ai_level': self.ai_level,
+            'last_ai_move': self.last_ai_move, # (zone, action) ou None
+            'ai_history': list(self.ai_history), # Envoyer l'historique récent
+            'game_over': self.game_over,
+            'winner': self.winner,
+            'zones': self.zones, # Pour que le frontend sache quelles zones existent
+            'actions': self.actions, # Idem pour les actions
+        }
+
+    def execute_turn(self, player_zone, player_action):
+        """Exécute un tour avec l'action du joueur et retourne le nouvel état"""
+        if self.game_over:
+            print("Attempted to execute turn on game over state.")
+            return self.get_game_state() # Ne rien faire si la partie est finie
+
+        print(f"Executing Turn {self.current_turn}. Player: {player_zone}-{player_action}")
+
+        # 1. Obtenir l'action de l'IA
+        ai_model = self.ai_models.get(self.ai_level)
+        if not ai_model:
+            print(f"Error: AI model for level {self.ai_level} not found!")
+            # Fallback to basic AI or handle error
+            ai_model = self.ai_models[1]
+
+        # Adaptez l'appel à choose_action selon le type d'IA
+        if isinstance(ai_model, (DeepQLearningAI, HybridAI)):
+             ai_zone, ai_action = ai_model.choose_action(self.history, self.player_score, self.ai_score, self.current_turn)
+        else:
+             ai_zone, ai_action = ai_model.choose_action(self.history)
+        self.last_ai_move = (ai_zone, ai_action)
+        print(f"AI ({type(ai_model).__name__}) chose: {ai_zone}-{ai_action}")
+
+        # 2. Résoudre le tour
+        result = self.resolve_turn(player_zone, player_action, ai_zone, ai_action)
+        player_gain = result["player_points"]
+        ai_gain = result["ai_points"]
+
+        # 3. Mettre à jour les scores
+        self.player_score += player_gain
+        self.ai_score += ai_gain
+
+        # 4. Enregistrer l'historique
+        turn_data = {
+            "turn": self.current_turn,
+            "player": (player_zone, player_action),
+            "ai": (ai_zone, ai_action),
+            "result": result,
+            "player_score_after": self.player_score,
+            "ai_score_after": self.ai_score
+        }
+        self.history.append(turn_data)
+        self.ai_history.append({
+            "turn": self.current_turn, "zone": ai_zone, "action": ai_action, "bluff": False
+        })
+
+        # 5. Apprentissage de l'IA
+        if hasattr(ai_model, 'learn'):
+            reward = ai_gain - player_gain
+            done = (self.current_turn == 10) # Est-ce la fin après ce tour?
+
+            # Adaptez l'appel à learn selon le type d'IA
+            if isinstance(ai_model, DeepQLearningAI):
+                state = ai_model.encode_state(self.history[:-1], self.player_score - player_gain, self.ai_score - ai_gain, self.current_turn -1)
+                next_state = ai_model.encode_state(self.history, self.player_score, self.ai_score, self.current_turn)
+                action_index = ai_model._get_action_index(ai_zone, ai_action)
+                ai_model.remember(state, action_index, reward, next_state, done)
+                ai_model.train()
+            elif isinstance(ai_model, HybridAI):
+                 ai_model.learn(self.history, reward, self.player_score, self.ai_score, self.current_turn, done)
+            elif isinstance(ai_model, QLearningAI):
+                ai_model.learn(self.history, reward)
+
+        # 6. Passer au tour suivant
+        self.current_turn += 1
+
+        # 7. Vérifier fin de partie
+        if self.current_turn > 10:
+            self.game_over = True
+            if self.player_score > self.ai_score:
+                self.winner = "Player"
+            elif self.ai_score > self.player_score:
+                self.winner = "AI"
+            else:
+                self.winner = "Draw"
+            print(f"Game Over. Winner: {self.winner}")
+            # Sauvegarder les modèles et le score à la fin
+            self._save_ai_models()
+            self._save_score()
+            # self.export_joblib() # Optionnel
+
+        # 8. Retourner le nouvel état complet
+        return self.get_game_state()
+
+# --- Initialisation Flask et SocketIO ---
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'votre_cle_secrete_ici!' # Important pour SocketIO
+# Utiliser eventlet est souvent recommandé pour de meilleures performances
+# socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app)
+
+# --- Instance Globale du Jeu ---
+# Attention: Pour une application multi-utilisateurs, il faudrait gérer
+# une instance de jeu par session/utilisateur. Pour du local, c'est ok.
+game = Game()
+
+# --- Routes Flask ---
+@app.route('/')
+def index():
+    """Sert la page HTML principale."""
+    print("Serving index.html")
+    # Créez un dossier 'templates' et mettez y 'index.html'
+    return render_template('index.html')
+
+# --- Événements SocketIO ---
+@socketio.on('connect')
+def handle_connect():
+    """Quand un navigateur se connecte."""
+    print('Client connected:', request.sid)
+    # Envoyer l'état initial du jeu au client qui vient de se connecter
+    emit('update_state', game.get_game_state())
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Quand un navigateur se déconnecte."""
+    print('Client disconnected:', request.sid)
+
+@socketio.on('start_game')
+def handle_start_game(data):
+    """Reçoit une demande pour démarrer/redémarrer une partie."""
+    level = data.get('level', 1)
+    print(f"Received start_game request for level {level}")
+    if game.set_level(int(level)):
+        game.reset_game()
+        # Envoyer le nouvel état initialisé à tous les clients connectés (ou juste au demandeur)
+        emit('update_state', game.get_game_state(), broadcast=True) # broadcast=True si plusieurs joueurs potentiels
+    else:
+        print(f"Invalid level received: {level}")
+        # Peut-être envoyer un message d'erreur au client ?
+        # emit('error_message', {'message': 'Niveau invalide'})
+
+@socketio.on('player_action')
+def handle_player_action(data):
+    """Reçoit l'action choisie par le joueur."""
+    zone = data.get('zone')
+    action = data.get('action')
+    print(f"Received player action: Zone={zone}, Action={action}")
+
+    if not zone or not action:
+        print("Invalid player action received.")
+        # emit('error_message', {'message': 'Action invalide.'})
+        return
+
+    if not game.game_over:
+        # Exécute le tour dans le backend
+        new_state = game.execute_turn(zone, action)
+        # Envoie le nouvel état à tous les clients
+        print("Emitting updated game state.")
+        emit('update_state', new_state, broadcast=True)
+    else:
+        print("Action received but game is over.")
+        # Renvoyer l'état final au cas où le client serait désynchronisé
+        emit('update_state', game.get_game_state())
+
+# --- Démarrage du Serveur ---
+if __name__ == '__main__':
+    print("Starting Flask-SocketIO server...")
+    # Décommentez la ligne eventlet si vous l'avez installé
+    # socketio.run(app, debug=True, host='0.0.0.0', port=5000) # host='0.0.0.0' pour accès réseau local
+    socketio.run(app, debug=True, port=5000) # debug=True pour le développement
