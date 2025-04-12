@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maître du Temps ML - Web</title>
+    <!-- Lier le fichier CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Inclure la bibliothèque client Socket.IO -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Maître du Temps ML - Web</h1>
+
+    <div id="game-info">
+        <p>Tour: <span id="turn">0</span>/10</p>
+        <p>Niveau IA: <span id="ai-level">?</span></p>
+        <p>Score Joueur: <span id="player-score">0</span></p>
+        <p>Score IA: <span id="ai-score">0</span></p>
+    </div>
+
+    <div id="game-controls">
+        <div id="level-selection">
+            <label for="level">Choisir Niveau:</label>
+            <select id="level">
+                <option value="1">Facile</option>
+                <option value="2">Moyen</option>
+                <option value="3">Difficile</option>
+                <option value="4">Expert</option>
+            </select>
+            <button id="start-button">Nouvelle Partie</button>
+        </div>
+
+        <div id="zones-container" class="control-section">
+            <h2>Choisissez une Zone :</h2>
+            <!-- Les boutons de zone seront générés par JS -->
+        </div>
+
+        <div id="actions-container" class="control-section">
+            <h2>Choisissez une Action :</h2>
+            <!-- Les boutons d'action seront générés par JS -->
+        </div>
+
+        <button id="confirm-button" disabled>Confirmer le Tour</button>
+    </div>
+
+    <div id="feedback-area">
+        <p id="message">Sélectionnez un niveau et commencez une nouvelle partie.</p>
+        <p id="last-ai-move">Dernier coup IA: ---</p>
+    </div>
+
+    <div id="ai-history-panel">
+        <h3>Historique IA (5 derniers)</h3>
+        <ul id="ai-history-list">
+            <!-- L'historique sera rempli par JS -->
+        </ul>
+    </div>
+
+    <div id="game-over-message" style="display: none;">
+        <h2>Fin de Partie !</h2>
+        <p id="winner-message"></p>
+    </div>
+
+    <!-- Lier le fichier JavaScript -->
+    <!-- Mettre le script à la fin pour que le DOM soit chargé -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
