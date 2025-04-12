@@ -1,0 +1,93 @@
+body {
+    font-family: sans-serif;
+    background-color: #f0f0f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#game-info, #game-controls, #feedback-area, #ai-history-panel {
+    background-color: #fff;
+    padding: 15px;
+    margin: 10px;
+    border-radius: 8px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    width: 80%;
+    max-width: 600px;
+}
+
+#game-info p, #feedback-area p {
+    margin: 5px 0;
+}
+
+.control-section h2 {
+    margin-top: 0;
+}
+
+#zones-container button, #actions-container button {
+    padding: 10px 15px;
+    margin: 5px;
+    font-size: 1em;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #e7e7e7;
+}
+
+#zones-container button.selected, #actions-container button.selected {
+    background-color: #f0ad4e; /* Orange pour sélectionné */
+    border-color: #eea236;
+    font-weight: bold;
+}
+
+#confirm-button, #start-button {
+    padding: 12px 20px;
+    font-size: 1.1em;
+    cursor: pointer;
+    border-radius: 5px;
+    border: none;
+    margin-top: 15px;
+}
+
+#start-button {
+    background-color: #5cb85c; /* Vert */
+    color: white;
+}
+#confirm-button {
+    background-color: #5bc0de; /* Bleu info */
+    color: white;
+}
+
+#confirm-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#game-over-message {
+    margin-top: 20px;
+    padding: 20px;
+    border: 2px solid red;
+    background-color: #f2dede;
+    color: #a94442;
+    text-align: center;
+    border-radius: 5px;
+}
+
+#ai-history-panel {
+    background-color: #d9edf7; /* Bleu clair */
+}
+
+#ai-history-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+#ai-history-list li {
+    margin-bottom: 3px;
+    font-size: 0.9em;
+}
+
+#ai-history-list li.latest {
+    font-weight: bold;
+    color: #31708f; /* Bleu foncé */
+}
